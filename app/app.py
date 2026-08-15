@@ -51,11 +51,12 @@ def main():
     Enter one or more URLs to documentation pages and the AI will identify modules, submodules, and generate descriptions.
     """)
     
-    # Check for API key
+    # Check for API key (optional - app works without it but AI extraction disabled)
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        st.error("⚠️ OpenAI API key not found. Please set your OPENAI_API_KEY environment variable.")
-        st.stop()
+        st.warning("⚠️ OpenAI API key not found. AI module extraction disabled. You can still crawl and view site content.")
+    else:
+        st.success("✅ OpenAI API key detected. AI module extraction enabled.")
     
     # URL input
     st.subheader("Enter Documentation URLs")
@@ -77,6 +78,57 @@ def main():
         )
         max_depth = 1  # Fixed to 1 level deep (main URL + direct links)
         st.info("Crawl depth is limited to 1 level deep from main URL (main page + directly linked pages only)")
+    
+    # Demo button (works without API key)
+    if st.button("Run Demo", type="secondary"):
+        st.info("Running demo with sample data...")
+        
+        demo_modules = [
+            {
+                "module": "Authentication",
+                "Description": "User authentication and access control module handling login, registration, and session management.",
+                "Submodules": {
+                    "Login": "Username/password authentication with remember me option",
+                    "Registration": "New user signup with email verification",
+                    "Password Reset": "Secure password recovery via email",
+                    "OAuth": "Social login integration (Google, GitHub, Microsoft)",
+                    "Two-Factor Auth": "SMS and TOTP-based 2FA support"
+                }
+            },
+            {
+                "module": "User Management",
+                "Description": "Comprehensive user administration including roles, permissions, and profile management.",
+                "Submodules": {
+                    "Roles & Permissions": "Role-based access control with custom permission sets",
+                    "User Profiles": "User profile editing and avatar management",
+                    "User Groups": "Organize users into groups for bulk operations",
+                    "Audit Logs": "Track user actions and login history"
+                }
+            },
+            {
+                "module": "Dashboard",
+                "Description": "Interactive analytics dashboard with customizable widgets and real-time data visualization.",
+                "Submodules": {
+                    "Widgets": "Drag-and-drop dashboard widget system",
+                    "Reports": "Generate and schedule automated reports",
+                    "Charts": "Interactive charts with drill-down capabilities",
+                    "Exports": "Export data to PDF, Excel, and CSV formats"
+                }
+            },
+            {
+                "module": "API & Integrations",
+                "Description": "RESTful API endpoints and third-party service integrations.",
+                "Submodules": {
+                    "REST API": "Full REST API with OpenAPI documentation",
+                    "Webhooks": "Event-driven webhook notifications",
+                    "Integrations": "Pre-built integrations with popular services",
+                    "API Keys": "API key management and rate limiting"
+                }
+            }
+        ]
+        
+        st.session_state.demo_mode = True
+        st.session_state.demo_modules = demo_modules
     
     # Process button
     if st.button("Extract Modules", type="primary"):
@@ -162,11 +214,21 @@ def main():
                 progress = (i + 1) / len(valid_urls) * 0.5  # First half of progress
                 progress_bar.progress(progress)
             
-            # Update status
-            status_container.info(f"Analyzing content and extracting modules using {model}...")
-            
-            # Extract modules
-            modules = extractor.extract_modules(all_results)
+            # Extract modules (only if API key is available)
+            modules = []
+            if api_key:
+                status_container.info(f"Analyzing content and extracting modules using {model}...")
+                modules = extractor.extract_modules(all_results)
+            else:
+                status_container.info("Crawling complete! (AI extraction skipped - no API key)")
+                # Create basic module structure from crawled content
+                for url, content in all_results["content"].items():
+                    title = all_results["titles"].get(url, "Untitled")
+                    modules.append({
+                        "module": title,
+                        "Description": f"Crawled from: {url}",
+                        "Submodules": {}
+                    })
             
             # Complete progress
             progress_bar.progress(1.0)
@@ -292,6 +354,35 @@ def main():
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
             logging.error(f"Error in extraction process: {e}", exc_info=True)
+    
+    # Display demo results if in demo mode
+    if st.session_state.get("demo_mode") and st.session_state.get("demo_modules"):
+        st.subheader("Demo Results - Sample Extracted Modules")
+        
+        tab1, tab2 = st.tabs(["Interactive View", "JSON Output"])
+        
+        with tab1:
+            for module in st.session_state.demo_modules:
+                with st.expander(f"📁 {module['module']}"):
+                    st.markdown(f"**Description:** {module['Description']}")
+                    
+                    if module['Submodules']:
+                        st.markdown("**Submodules:**")
+                        for submodule_name, submodule_desc in module['Submodules'].items():
+                            st.markdown(f"- **{submodule_name}:** {submodule_desc}")
+                    else:
+                        st.markdown("*No submodules identified*")
+        
+        with tab2:
+            st.json(st.session_state.demo_modules)
+            
+            json_str = json.dumps(st.session_state.demo_modules, indent=2)
+            st.download_button(
+                label="Download Demo JSON",
+                data=json_str,
+                file_name="demo_modules.json",
+                mime="application/json"
+            )
 
 if __name__ == "__main__":
     main() 
